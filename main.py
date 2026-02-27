@@ -1,53 +1,48 @@
 import telebot
 import yt_dlp
 import os
-import http.server
 import threading
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 
-# Render uchun kichik server
-def dummyserver():
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"Bot ishlayapti!")
-    server = http.server.HTTPServer(('0.0.0.0', 10000), Handler)
+# Render o'chirib qo'ymasligi uchun
+def run_server():
+    server = HTTPServer(('0.0.0.0', 10000), SimpleHTTPRequestHandler)
     server.serve_forever()
-
-threading.Thread(target=dummyserver, daemon=True).start()
+threading.Thread(target=run_server, daemon=True).start()
 
 BOT_TOKEN = "8777776298:AAFJMLINXKvAtC-cmE-7GzpZ78bhVpONwdc"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "Salom! Link yuboring, videoni yuklab beraman! 🚀")
+    bot.send_message(message.chat.id, "Salom! Men tayyorman. Link yuboring! 🚀")
 
 @bot.message_handler(func=lambda message: True)
-def download_video(message):
+def download(message):
     url = message.text
     if "http" in url:
-        msg = bot.reply_to(message, "Yuklash boshlandi... ⏳")
+        sent_msg = bot.reply_to(message, "Yuklanyapti... ⏳")
+        file_name = f"{message.chat.id}.mp4"
         
         ydl_opts = {
             'format': 'best',
-            'outtmpl': 'video.mp4',
-            'no_warnings': True,
+            'outtmpl': file_name,
             'quiet': True,
+            'no_warnings': True,
         }
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             
-            with open('video.mp4', 'rb') as video:
+            with open(file_name, 'rb') as video:
                 bot.send_video(message.chat.id, video)
             
-            os.remove('video.mp4')
-            bot.delete_message(message.chat.id, msg.message_id)
+            os.remove(file_name)
+            bot.delete_message(message.chat.id, sent_msg.message_id)
         except Exception as e:
-            bot.reply_to(message, "Xatolik! Link noto'g'ri yoki video juda katta.")
+            bot.edit_message_text(f"Xato: Video juda katta yoki havola yopiq.", message.chat.id, sent_msg.message_id)
     else:
-        bot.reply_to(message, "Iltimos, video linkini yuboring.")
+        bot.reply_to(message, "Iltimos, link yuboring!")
 
 bot.polling(none_stop=True)
