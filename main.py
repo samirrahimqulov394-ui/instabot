@@ -1,48 +1,39 @@
 import telebot
-from telebot import types
-import instaloader
-from flask import Flask
-from threading import Thread
+import yt_dlp
+import os
 
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is alive!"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-API_TOKEN = '8777776298:AAFJMLINXKvAtC-cmE-7GzpZ78bhVpONwdc'
-bot = telebot.TeleBot(API_TOKEN)
-L = instaloader.Instaloader()
+# Botingiz tokenni shu yerga qo'ying
+BOT_TOKEN = "7917787498:AAEkL3R772x0o6M15vXN0o6M15vXN0o6M15" # O'zingiznikini qo'ying
+bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start'])
-def welcome(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🎬 Video yuklash", "ℹ️ Bot haqida")
-    bot.send_message(message.chat.id, "Bot serverda yoniq! 🚀", reply_markup=markup)
+def start(message):
+    bot.send_message(message.chat.id, "Salom! Men Instagram, YouTube va TikTok videolarini yuklab beraman. Menga havola (link) yuboring! 🚀")
 
-@bot.message_handler(func=lambda message: "instagram.com" in message.text)
-def handle_insta(message):
-    msg = bot.reply_to(message, "Yuklanmoqda... ⏳")
-    try:
-        url = message.text.strip().split("/")
-        shortcode = ""
-        for i in range(len(url)):
-            if url[i] in ['reels', 'p', 'reel'] and i+1 < len(url):
-                shortcode = url[i+1].split('?')[0]
-                break
-        post = instaloader.Post.from_shortcode(L.context, shortcode)
-        bot.send_video(message.chat.id, post.video_url, caption="Tayyor! ✅")
-        bot.delete_message(message.chat.id, msg.message_id)
-    except:
-        bot.edit_message_text("Xato! Profil yopiq bo'lishi mumkin.", message.chat.id, msg.message_id)
+@bot.message_handler(func=lambda message: True)
+def download_video(message):
+    url = message.text
+    if "instagram.com" in url or "youtube.com" in url or "youtu.be" in url or "tiktok.com" in url:
+        msg = bot.reply_to(message, "Video tayyorlanyapti, iltimos kuting... ⏳")
+        
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': 'video.mp4',
+            'noplaylist': True,
+        }
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            
+            with open('video.mp4', 'rb') as video:
+                bot.send_video(message.chat.id, video)
+            
+            os.remove('video.mp4') # Faylni o'chirish
+            bot.delete_message(message.chat.id, msg.message_id)
+        except Exception as e:
+            bot.reply_to(message, f"Xato yuz berdi: {e}")
+    else:
+        bot.reply_to(message, "Iltimos, faqat Instagram, YouTube yoki TikTok havolasini yuboring.")
 
-def start_bot():
-    bot.infinity_polling()
-
-if __name__ == "__main__":
-    t = Thread(target=run)
-    t.start()
-    start_bot()
+bot.polling()
