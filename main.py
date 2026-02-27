@@ -1,53 +1,73 @@
 import telebot
-import yt_dlp
-import os
+from telebot import types
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
-# 1. Render o'chib qolmasligi uchun (Port binding)
-def run_dummy_server():
+# 1. Render uchun server (Port xatosi bermasligi uchun)
+def run_server():
     server = HTTPServer(('0.0.0.0', 10000), SimpleHTTPRequestHandler)
     server.serve_forever()
-threading.Thread(target=run_dummy_server, daemon=True).start()
+threading.Thread(target=run_server, daemon=True).start()
 
-# 2. Bot sozlamalari
-BOT_TOKEN = "8777776298:AAFJMLINXKvAtC-cmE-7GzpZ78bhVpONwdc"
+# 2. Yangi Bot Tokeningiz
+BOT_TOKEN = "8673329196:AAFl2edOLz9M7Rip0dihcbRsjsT542S16L0"
 bot = telebot.TeleBot(BOT_TOKEN)
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, "Salom! Men tayyorman. 🚀\nInstagram yoki YouTube linkini yuboring.")
+# 3. Test Savollari (Bu yerga xohlagancha savol qo'shishingiz mumkin)
+questions = [
+    {
+        "q": "I ___ English every day.",
+        "options": ["study", "studies", "studying", "studied"],
+        "correct": "study"
+    },
+    {
+        "q": "___ you like coffee?",
+        "options": ["Does", "Do", "Are", "Is"],
+        "correct": "Do"
+    },
+    {
+        "q": "Choose the correct word: 'Bino'",
+        "options": ["Car", "Building", "Tree", "Street"],
+        "correct": "Building"
+    }
+]
+
+user_data = {}
+
+@bot.message_handler(commands=['start', 'test'])
+def start_test(message):
+    user_data[message.chat.id] = 0 # Savollarni 0-dan boshlash
+    bot.send_message(message.chat.id, "Ingliz tili test botiga xush kelibsiz! 🎓")
+    send_question(message)
+
+def send_question(message):
+    chat_id = message.chat.id
+    q_index = user_data[chat_id]
+    
+    if q_index < len(questions):
+        q = questions[q_index]
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        for option in q["options"]:
+            markup.add(option)
+        
+        bot.send_message(chat_id, f"Savol {q_index + 1}: {q['q']}", reply_markup=markup)
+    else:
+        bot.send_message(chat_id, "Tabriklayman! Hamma savollarga javob berdingiz. 🎉\nQayta boshlash uchun /test buyrug'ini bosing.")
 
 @bot.message_handler(func=lambda message: True)
-def handle_message(message):
-    url = message.text
-    if "http" in url:
-        msg = bot.reply_to(message, "Yuklanmoqda... ⏳")
-        file_path = f"video_{message.chat.id}.mp4"
-        
-        # Eng yengil formatda yuklash sozlamalari
-        ydl_opts = {
-            'format': 'best[ext=mp4]/best', # Faqat MP4 format
-            'outtmpl': file_path,
-            'quiet': True,
-            'no_warnings': True,
-            'merge_output_format': 'mp4'
-        }
-        
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+def check_answer(message):
+    chat_id = message.chat.id
+    if chat_id in user_data:
+        q_index = user_data[chat_id]
+        if q_index < len(questions):
+            correct_ans = questions[q_index]["correct"]
             
-            with open(file_path, 'rb') as video:
-                bot.send_video(message.chat.id, video)
+            if message.text == correct_ans:
+                bot.send_message(chat_id, "To'g'ri! ✅")
+            else:
+                bot.send_message(chat_id, f"Xato! ❌ To'g'ri javob: {correct_ans}")
             
-            os.remove(file_path)
-            bot.delete_message(message.chat.id, msg.message_id)
-            
-        except Exception as e:
-            bot.edit_message_text(f"Xatolik: Video juda katta yoki profil yopiq.", message.chat.id, msg.message_id)
-            if os.path.exists(file_path): os.remove(file_path)
-    else:
-        bot.reply_to(message, "Iltimos, link yuboring.")
+            user_data[chat_id] += 1
+            send_question(message)
 
 bot.polling(none_stop=True)
