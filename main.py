@@ -1,73 +1,54 @@
-import telebot
-from telebot import types
-import threading
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+import logging
+from aiogram import Bot, Dispatcher, executor, types
 
-# 1. Render uchun server (Port xatosi bermasligi uchun)
-def run_server():
-    server = HTTPServer(('0.0.0.0', 10000), SimpleHTTPRequestHandler)
-    server.serve_forever()
-threading.Thread(target=run_server, daemon=True).start()
+# Bot tokeningiz
+API_TOKEN = '8673930946:AAGfOL87ejN0vCKHrVQevYr4X_LrEV09YEw'
 
-# 2. Yangi Bot Tokeningiz
-BOT_TOKEN = "8673329196:AAFl2edOLz9M7Rip0dihcbRsjsT542S16L0"
-bot = telebot.TeleBot(BOT_TOKEN)
+# Botni sozlash
+logging.basicConfig(level=logging.INFO)
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher(bot)
 
-# 3. Test Savollari (Bu yerga xohlagancha savol qo'shishingiz mumkin)
-questions = [
+# Savollar bazasi (namuna)
+quiz_data = [
     {
-        "q": "I ___ English every day.",
-        "options": ["study", "studies", "studying", "studied"],
-        "correct": "study"
+        "question": "1. 'Apple' so'zining o'zbekcha ma'nosi nima?",
+        "options": ["Nok", "Olma", "Uzum"],
+        "correct": "Olma"
     },
     {
-        "q": "___ you like coffee?",
-        "options": ["Does", "Do", "Are", "Is"],
-        "correct": "Do"
-    },
-    {
-        "q": "Choose the correct word: 'Bino'",
-        "options": ["Car", "Building", "Tree", "Street"],
-        "correct": "Building"
+        "question": "2. Choose the correct verb: I ___ to school every day.",
+        "options": ["go", "goes", "went"],
+        "correct": "go"
     }
 ]
 
-user_data = {}
+@dp.message_handler(commands=['start'])
+async def send_welcome(message: types.Message):
+    await message.reply("Salom! Ingliz tili botiga xush kelibsiz.\nTestni boshlash uchun /test buyrug'ini yuboring.")
 
-@bot.message_handler(commands=['start', 'test'])
-def start_test(message):
-    user_data[message.chat.id] = 0 # Savollarni 0-dan boshlash
-    bot.send_message(message.chat.id, "Ingliz tili test botiga xush kelibsiz! 🎓")
-    send_question(message)
-
-def send_question(message):
-    chat_id = message.chat.id
-    q_index = user_data[chat_id]
-    
-    if q_index < len(questions):
-        q = questions[q_index]
-        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-        for option in q["options"]:
-            markup.add(option)
-        
-        bot.send_message(chat_id, f"Savol {q_index + 1}: {q['q']}", reply_markup=markup)
-    else:
-        bot.send_message(chat_id, "Tabriklayman! Hamma savollarga javob berdingiz. 🎉\nQayta boshlash uchun /test buyrug'ini bosing.")
-
-@bot.message_handler(func=lambda message: True)
-def check_answer(message):
-    chat_id = message.chat.id
-    if chat_id in user_data:
-        q_index = user_data[chat_id]
-        if q_index < len(questions):
-            correct_ans = questions[q_index]["correct"]
+@dp.message_handler(commands=['test'])
+async def start_quiz(message: types.Message):
+    for item in quiz_data:
+        # Har bir savol uchun tugmalar yaratamiz
+        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        for option in item["options"]:
+            keyboard.add(option)
             
-            if message.text == correct_ans:
-                bot.send_message(chat_id, "To'g'ri! ✅")
+        await message.answer(item["question"], reply_markup=keyboard)
+
+@dp.message_handler(lambda message: any(q["options"] for q in quiz_data if message.text in q["options"]))
+async def check_answer(message: types.Message):
+    # Bu yerda javobni tekshirish logikasi (soddalashtirilgan)
+    found = False
+    for q in quiz_data:
+        if message.text in q["options"]:
+            if message.text == q["correct"]:
+                await message.answer(f"To'g'ri! ✅")
             else:
-                bot.send_message(chat_id, f"Xato! ❌ To'g'ri javob: {correct_ans}")
-            
-            user_data[chat_id] += 1
-            send_question(message)
+                await message.answer(f"Xato. To'g'ri javob: {q['correct']} ❌")
+            found = True
+            break
 
-bot.polling(none_stop=True)
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
