@@ -1,6 +1,5 @@
 import os
 import asyncio
-import sqlite3
 import random
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
@@ -8,147 +7,98 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from flask import Flask
 from threading import Thread
 
-TOKEN = "8742866578:AAHt_zj3SZtvFwrBzxnjjuxMehVUlHEPbNY"
-bot = Bot(token=TOKEN)
+# TOKENS
+BOT_TOKEN = "8742866578:AAHt_zj3SZtvFwrBzxnjjuxMehVUlHEPbNY"
+PAYMENT_TOKEN = "398062629:TEST:999999999_F91D8F69C042267444B74CC0B3C747757EB0E065"
+
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 app = Flask('')
 
-# --- DATABASE QISMI ---
-def init_db():
-    conn = sqlite3.connect("users.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            full_name TEXT,
-            best_score REAL DEFAULT 0
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-def save_user(user_id, name):
-    conn = sqlite3.connect("users.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO users (user_id, full_name) VALUES (?, ?)", (user_id, name))
-    conn.commit()
-    conn.close()
-
-def get_user(user_id):
-    conn = sqlite3.connect("users.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT full_name FROM users WHERE user_id = ?", (user_id,))
-    res = cursor.fetchone()
-    conn.close()
-    return res[0] if res else None
-
-# --- TEST SAVOLLARI ---
+# SAVOLLAR (Demo uchun qisqa)
 QUESTIONS = {
-    "A1": [
-        {"q": "I ___ a student.", "o": ["am", "is", "are"], "c": "am"},
-        {"q": "She ___ to school every day.", "o": ["go", "goes", "going"], "c": "goes"},
-        {"q": "___ you like pizza?", "o": ["Do", "Does", "Are"], "c": "Do"},
-        {"q": "We ___ friends.", "o": ["is", "am", "are"], "c": "are"},
-        {"q": "Look! It ___ raining.", "o": ["is", "am", "are"], "c": "is"},
-    ],
-    "B1": [
-        {"q": "If I ___ more time, I would learn Spanish.", "o": ["have", "had", "will have"], "c": "had"},
-        {"q": "I've been here ___ 3 hours.", "o": ["for", "since", "at"], "c": "for"},
-    ]
+    "A1": [{"q": "I ___ a student.", "o": ["am", "is", "are"], "c": "am"}],
+    "B1": [{"q": "He ___ to school.", "o": ["goes", "go", "going"], "c": "goes"}]
 }
 
-user_sessions = {}
+user_data = {}
 
 @app.route('/')
-def home(): return "Bot Active with SQLite"
+def home(): return "Payment Bot is Live"
 
 def run_http_server():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
 
-# --- BOT MANTIQI ---
-
+# --- START ---
 @dp.message(CommandStart())
-async def start_handler(message: types.Message):
-    user_name = get_user(message.from_user.id)
-    
-    if user_name:
-        # Agar baza bo'lsa, ism so'ramaymiz
-        await message.answer(f"Xush kelibsiz, {user_name}! Darajani tanlang:", reply_markup=get_levels_kb())
-    else:
-        # Birinchi marta kirgan bo'lsa
-        user_sessions[message.from_user.id] = {"step": "get_name"}
-        await message.answer("Xush kelibsiz! Ism-sharifingizni yuboring:")
+async def start(message: types.Message):
+    user_data[message.from_user.id] = {"step": "name"}
+    await message.answer("Xush kelibsiz! Ismingizni kiriting:")
 
-@dp.message(lambda msg: user_sessions.get(msg.from_user.id, {}).get("step") == "get_name")
-async def register_user(message: types.Message):
-    name = message.text
-    save_user(message.from_user.id, name) # Bazaga saqlash
-    user_sessions[message.from_user.id] = {"name": name}
-    await message.answer(f"Rahmat, {name}! Endi darajani tanlang:", reply_markup=get_levels_kb())
-
-def get_levels_kb():
+@dp.message(lambda m: user_data.get(m.from_user.id, {}).get("step") == "name")
+async def get_name(message: types.Message):
+    uid = message.from_user.id
+    user_data[uid] = {"name": message.text, "step": "quiz"}
     kb = InlineKeyboardBuilder()
-    for lvl in QUESTIONS.keys():
-        kb.button(text=f"🎓 {lvl}", callback_data=f"lvl_{lvl}")
-    kb.adjust(1)
-    return kb.as_markup()
+    for lvl in QUESTIONS.keys(): kb.button(text=lvl, callback_data=f"lvl_{lvl}")
+    await message.answer(f"Salom {message.text}, darajani tanlang:", reply_markup=kb.as_markup())
 
+# --- TEST JARAYONI ---
 @dp.callback_query(F.data.startswith("lvl_"))
-async def choose_qty(callback: types.CallbackQuery):
+async def start_quiz(callback: types.CallbackQuery):
     lvl = callback.data.split("_")[1]
-    user_sessions[callback.from_user.id]["lvl"] = lvl
-    kb = InlineKeyboardBuilder()
-    for n in [5, 10]:
-        kb.button(text=f"{n} ta savol", callback_data=f"qty_{n}")
-    await callback.message.edit_text(f"{lvl} darajasi tanlandi. Savol sonini tanlang:", reply_markup=kb.as_markup())
-
-@dp.callback_query(F.data.startswith("qty_"))
-async def start_test(callback: types.CallbackQuery):
     uid = callback.from_user.id
-    qty = int(callback.data.split("_")[1])
-    lvl = user_sessions[uid]["lvl"]
+    q = QUESTIONS[lvl][0] # Demo: faqat 1-savol
+    user_data[uid].update({"cur_q": q, "score": 0})
     
-    q_list = QUESTIONS[lvl].copy()
-    random.shuffle(q_list)
-    
-    user_sessions[uid].update({
-        "qs": q_list[:qty], "cur": 0, "score": 0, "total": qty
-    })
-    await send_q(callback.message, uid)
-
-async def send_q(message, uid):
-    data = user_sessions[uid]
-    if data["cur"] < data["total"]:
-        q = data["qs"][data["cur"]]
-        kb = InlineKeyboardBuilder()
-        opts = q["o"].copy()
-        random.shuffle(opts)
-        for o in opts: kb.button(text=o, callback_data=f"ans_{o}")
-        kb.adjust(1)
-        await message.edit_text(f"Savol {data['cur']+1}/{data['total']}:\n\n{q['q']}", reply_markup=kb.as_markup())
-    else:
-        name = get_user(uid)
-        res = (data['score'] / data['total']) * 100
-        await message.edit_text(f"🏁 Test tugadi, {name}!\n✅ To'g'ri: {data['score']}\n🏆 Natija: {res:.1f}%")
+    kb = InlineKeyboardBuilder()
+    for o in q["o"]: kb.button(text=o, callback_data=f"ans_{o}")
+    await callback.message.edit_text(q["q"], reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data.startswith("ans_"))
-async def handle_ans(callback: types.CallbackQuery):
+async def check_ans(callback: types.CallbackQuery):
     uid = callback.from_user.id
     ans = callback.data.split("_")[1]
-    data = user_sessions[uid]
+    q = user_data[uid]["cur_q"]
     
-    if ans == data["qs"][data["cur"]]["c"]:
-        data["score"] += 1
+    if ans == q["c"]:
+        user_data[uid]["score"] += 1
         await callback.answer("To'g'ri! ✅")
     else:
         await callback.answer(f"Xato! ❌", show_alert=True)
-        
-    data["cur"] += 1
-    await send_q(callback.message, uid)
+    
+    # Test tugagach to'lov taklif qilish
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💎 VIP Testlarni sotib olish (10,000 so'm)", callback_data="buy_vip")
+    await callback.message.edit_text(
+        f"Test tugadi! Natijangiz: {user_data[uid]['score']}\n\n"
+        f"Ko'proq va qiyinroq testlar uchun VIP paketni sotib oling:",
+        reply_markup=kb.as_markup()
+    )
+
+# --- TO'LOV TIZIMI ---
+@dp.callback_query(F.data == "buy_vip")
+async def send_invoice(callback: types.CallbackQuery):
+    await bot.send_invoice(
+        chat_id=callback.from_user.id,
+        title="VIP Testlar To'plami",
+        description="1000 ta professional test va tushuntirishlar",
+        payload="vip_pack",
+        provider_token=PAYMENT_TOKEN,
+        currency="UZS",
+        prices=[types.LabeledPrice(label="VIP Obuna", amount=1000000)], # 10,000 UZS
+        start_parameter="pay"
+    )
+
+@dp.pre_checkout_query(lambda q: True)
+async def pre_checkout(query: types.PreCheckoutQuery):
+    await bot.answer_pre_checkout_query(query.id, ok=True)
+
+@dp.message(F.successful_payment)
+async def success(message: types.Message):
+    await message.answer(f"Rahmat! 🎉 To'lov qabul qilindi. Endi siz VIP foydalanuvchisiz!")
 
 async def main():
-    init_db() # Bazani ishga tushirish
     Thread(target=run_http_server).start()
     await dp.start_polling(bot)
 
