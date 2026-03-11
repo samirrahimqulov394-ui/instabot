@@ -2,7 +2,7 @@ import logging
 from aiogram import Bot, Dispatcher, executor, types
 
 # Bot tokeningiz joyida
-API_TOKEN = '8673930946:AAGfOL87ejN0vCKHrVQevYr4X_LrEV09YEw'
+API_TOKEN = '8742866578:AAHt_zj3SZtvFwrBzxnjjuxMehVUlHEPbNY'
 
 # Loglarni sozlash
 logging.basicConfig(level=logging.INFO)
