@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -15,22 +16,22 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Test savollari bazasi (Misol uchun A1 daraja)
+# Test savollari bazasi (A1 daraja)
 QUESTIONS = [
     {
         "question": "1. Choose the correct pronoun: '___ am a student.'",
         "options": ["He", "I", "They", "We"],
-        "correct": 1  # I (indeks bo'yicha 1-chi variant)
+        "correct": 1
     },
     {
         "question": "2. What is the plural form of 'child'?",
         "options": ["Childs", "Children", "Childes", "Kid"],
-        "correct": 1  # Children
+        "correct": 1
     },
     {
         "question": "3. Choose the correct verb: 'She ___ to school every day.'",
         "options": ["go", "goes", "going", "gone"],
-        "correct": 1  # goes
+        "correct": 1
     }
 ]
 
@@ -69,10 +70,8 @@ async def process_about(callback: CallbackQuery):
 @dp.callback_query(F.data == "start_test")
 async def start_test(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    # State'larni boshlang'ich holatga keltiramiz
     await state.set_state(TestState.in_test)
     await state.update_data(question_index=0, score=0)
-    
     await send_question(callback.message, state)
 
 # Savolni yuborish funksiyasi
@@ -81,7 +80,6 @@ async def send_question(message: Message, state: FSMContext):
     q_index = data.get("question_index")
     
     if q_index >= len(QUESTIONS):
-        # Test tugadi
         score = data.get("score")
         total = len(QUESTIONS)
         await state.clear()
@@ -96,13 +94,11 @@ async def send_question(message: Message, state: FSMContext):
 
     q = QUESTIONS[q_index]
     
-    # Variantlar uchun tugmalar yasash
     keyboard_buttons = []
     for i, option in enumerate(q["options"]):
         keyboard_buttons.append([InlineKeyboardButton(text=option, callback_data=f"ans_{i}")])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    
     await message.answer(q["question"], reply_markup=keyboard)
 
 # Javobni tekshirish
@@ -124,14 +120,31 @@ async def check_answer(callback: CallbackQuery, state: FSMContext):
         correct_text = q["options"][q["correct"]]
         await callback.message.answer(f"❌ Xato! To'g'ri javob: {correct_text}")
     
-    # Keyingi savolga o'tamiz
     await state.update_data(question_index=q_index + 1, score=score)
-    
-    # Eski xabarni o'chirish (ixtiyoriy) yoki yangi savol yuborish
     await send_question(callback.message, state)
 
-# Botni ishga tushirish
+
+# --- RENDER UCHUN WEB SERVER QISMI ---
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+async def web_server():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    # Render beradigan portni oladi (agar bo'lmasa 8080 ishlatadi)
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"Web server started on port {port}")
+
+
+# Asosiy ishga tushirish funksiyasi
 async def main():
+    # Veb-serverni va bot pollingni bir vaqtda yurgazish
+    await web_server()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
