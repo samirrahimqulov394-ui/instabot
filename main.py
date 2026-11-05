@@ -8,237 +8,171 @@ from aiogram.filters import Command
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+import google.generativeai as genai
 
-# Bot tokeningiz to'g'ridan-to'g'ri kiritildi
-TOKEN = "9019628067:AAEoJWLLx0D7lKPmruIZoItOAvEHeitl9zQ"
+# --- TOKENLAR VA SOZLAMALAR ---
+BOT_TOKEN = "9019628067:AAEoJWLLx0D7lKPmruIZoItOAvEHeitl9zQ"
+GEMINI_API_KEY = "AQ.Ab8RN6JQAGCed-mdVRbZqF7LeTNvZxG"  # Siz nusxalagan Gemini API kaliti
+
+# Gemini AI ni sozlash
+genai.configure(api_key=GEMINI_API_KEY)
+gemini_model = genai.GenerativeModel("gemini-1.5-flash")
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=TOKEN)
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ----------------------------------------------------
-# KATTA SAVOLLAR BAZASI 
-# ----------------------------------------------------
-QUESTIONS_BANK = [
-    {
-        "question": "1. Choose the correct pronoun:\n'___ am a student.'",
-        "options": ["He", "I", "They", "We"],
-        "correct": 1
-    },
-    {
-        "question": "2. What is the plural form of 'child'?",
-        "options": ["Childs", "Children", "Childes", "Kids"],
-        "correct": 1
-    },
-    {
-        "question": "3. Choose the correct verb form:\n'She ___ to school every day.'",
-        "options": ["go", "goes", "going", "gone"],
-        "correct": 1
-    },
-    {
-        "question": "4. Opposite of the word 'Big' is:",
-        "options": ["Huge", "Large", "Small", "Tall"],
-        "correct": 2
-    },
-    {
-        "question": "5. Complete the sentence:\n'They ___ watching a movie right now.'",
-        "options": ["is", "am", "are", "be"],
-        "correct": 2
-    },
-    {
-        "question": "6. Which past tense form is CORRECT?",
-        "options": ["Buyed", "Bought", "Buyedness", "Bringed"],
-        "correct": 1
-    },
-    {
-        "question": "7. Choose the correct preposition:\n'He was born ___ May.'",
-        "options": ["on", "at", "in", "by"],
-        "correct": 2
-    },
-    {
-        "question": "8. What is the comparative form of 'Good'?",
-        "options": ["Gooder", "Better", "Best", "More good"],
-        "correct": 1
-    }
-]
+# --- FSM STATE (Holatlar) ---
+class BotStates(StatesGroup):
+    ai_chat = State()        # AI bilan erkin suhbatlashish
+    waiting_feedback = State() # Sharh yozish
 
-# ----------------------------------------------------
-# FSM HOLATLARI (Test va Sharh yozish uchun)
-# ----------------------------------------------------
-class TestState(StatesGroup):
-    in_test = State()
-
-class FeedbackState(StatesGroup):
-    waiting_for_feedback = State()
-
-# ----------------------------------------------------
-# BOSH MENYU
-# ----------------------------------------------------
-def main_menu_keyboard():
+# --- BOSH MENYU ---
+def main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Testni boshlash (8 ta savol)", callback_data="start_test")],
-        [
-            InlineKeyboardButton(text="✍️ Sharh / Fikr qoldirish", callback_data="leave_feedback"),
-            InlineKeyboardButton(text="ℹ️ Bot haqida", callback_data="about")
-        ]
+        [InlineKeyboardButton(text="🤖 AI Repetitor bilan suhbat", callback_data="start_ai")],
+        [InlineKeyboardButton(text="🧠 Gemini dan Test olish", callback_data="ai_quiz")],
+        [InlineKeyboardButton(text="💡 Kun iborasi (Daily Idiom)", callback_data="daily_idiom")],
+        [InlineKeyboardButton(text="✍️ Sharh / Fikr qoldirish", callback_data="feedback")]
     ])
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     user_name = message.from_user.first_name
-
     await message.answer(
         f"Assalomu alaykum, {user_name}!\n\n"
-        f"\"English Question\" botiga xush kelibsiz! Test ishlashingiz yoki bot haqida o'z sharhingizni yozib qoldirishingiz mumkin.",
-        reply_markup=main_menu_keyboard()
+        f"🌟 **Super English AI Bot**ga xush kelibsiz! Bu bot Google Gemini sun'iy intellekti bilan jihozlangan.\n\n"
+        f"Quyidagi bo'limlardan birini tanlang:",
+        reply_markup=main_menu()
     )
 
 @dp.callback_query(F.data == "back_home")
-async def process_home(callback: CallbackQuery, state: FSMContext):
+async def back_to_home(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    user_name = callback.from_user.first_name
     await callback.message.edit_text(
-        f"Assalomu alaykum, {user_name}!\n\n"
-        f"Bosh menyuga qaytdingiz. Kerakli bo'limni tanlang:",
-        reply_markup=main_menu_keyboard()
+        "🏠 **Bosh menyu:**\nKerakli bo'limni tanlang:",
+        reply_markup=main_menu()
     )
 
-# ----------------------------------------------------
-# SHARH / FIKR QOLDIRISH BO'LIMI
-# ----------------------------------------------------
-@dp.callback_query(F.data == "leave_feedback")
-async def process_feedback_start(callback: CallbackQuery, state: FSMContext):
+# --- 1. AI CHAT (Ingliz tilida suhbatlashish va grammatika) ---
+@dp.callback_query(F.data == "start_ai")
+async def start_ai_chat(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await state.set_state(FeedbackState.waiting_for_feedback)
+    await state.set_state(BotStates.ai_chat)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Chatni to'xtatish", callback_data="back_home")]
+    ])
+    
+    await callback.message.edit_text(
+        "🤖 **AI Repetitor bilan chat boshlandi!**\n\n"
+        "Menga ingliz tilida xohlagan narsangizni yozing. Men siz bilan suhbatlashaman va grammatik xatolaringiz bo'lsa, ularni o'zbek tilida tushuntirib beraman.",
+        reply_markup=keyboard
+    )
+
+@dp.message(BotStates.ai_chat)
+async def handle_ai_chat(message: Message):
+    user_text = message.text
+    
+    prompt = (
+        f"You are a friendly English teacher. The user said: '{user_text}'. "
+        "Reply naturally in English to continue the conversation. "
+        "If there are any grammar or vocabulary mistakes in the user's sentence, politely correct them in Uzbek at the end of your message."
+    )
+    
+    try:
+        response = gemini_model.generate_content(prompt)
+        await message.answer(response.text)
+    except Exception as e:
+        logging.error(f"Gemini error: {e}")
+        await message.answer("⚠️ AI javob berishda xatolik yuz berdi. Birozdan keyin qayta urinib ko'ring.")
+
+# --- 2. GEMINI DAN TEST OLISH ---
+@dp.callback_query(F.data == "ai_quiz")
+async def generate_ai_quiz(callback: CallbackQuery):
+    await callback.answer("Gemini savol tayyorlamoqda...")
+    
+    prompt = (
+        "Generate 1 multiple-choice English grammar question with 4 options. "
+        "Provide the correct answer explanation in Uzbek language. Format it nicely."
+    )
+    
+    try:
+        response = gemini_model.generate_content(prompt)
+        await callback.message.edit_text(
+            f"🧠 **AI tomonidan tuzilgan savol:**\n\n{response.text}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Yangi savol olish", callback_data="ai_quiz")],
+                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_home")]
+            ])
+        )
+    except Exception as e:
+        logging.error(f"Gemini Quiz error: {e}")
+        await callback.message.edit_text("⚠️ Savol yaratishda xatolik yuz berdi.", reply_markup=main_menu())
+
+# --- 3. KUN IBORASI (Daily Idiom) ---
+@dp.callback_query(F.data == "daily_idiom")
+async def get_daily_idiom(callback: CallbackQuery):
+    await callback.answer("Ibora qidirilmoqda...")
+    
+    prompt = (
+        "Provide one interesting and useful English idiom. "
+        "Explain its meaning in Uzbek and give an example sentence in English with Uzbek translation."
+    )
+    
+    try:
+        response = gemini_model.generate_content(prompt)
+        await callback.message.edit_text(
+            f"💡 **Kun iborasi (Idiom):**\n\n{response.text}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Boshqa ibora", callback_data="daily_idiom")],
+                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_home")]
+            ])
+        )
+    except Exception as e:
+        logging.error(f"Gemini Idiom error: {e}")
+        await callback.message.edit_text("⚠️ Xatolik yuz berdi.", reply_markup=main_menu())
+
+# --- 4. SHARH QOLDIRISH ---
+@dp.callback_query(F.data == "feedback")
+async def ask_feedback(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(BotStates.waiting_feedback)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="back_home")]
     ])
-    
     await callback.message.edit_text(
-        "✍️ **Botingiz va savollar haqidagi fikringizni yozib yuboring:**\n\n"
-        "Matn yozib yuborsangiz, u loglarga yoziladi va botni yaxshilashga yordam beradi.",
+        "✍️ **Bot haqidagi fikr yoki taklifingizni yozib yuboring:**",
         reply_markup=keyboard
     )
 
-@dp.message(FeedbackState.waiting_for_feedback)
-async def process_feedback_received(message: Message, state: FSMContext):
+@dp.message(BotStates.waiting_feedback)
+async def receive_feedback(message: Message, state: FSMContext):
     user_info = message.from_user.full_name
     username = f"@{message.from_user.username}" if message.from_user.username else "Usernamelar yo'q"
-    feedback_text = message.text
-
-    logging.info(f"Yangi sharh [{user_info} - {username}]: {feedback_text}")
-
+    feedback = message.text
+    
+    logging.info(f"Yangi Sharh [{user_info} - {username}]: {feedback}")
+    
     await state.clear()
     await message.answer(
-        "✅ **Katta rahmat! Sharhingiz qabul qilindi.**\n\n"
-        "Fikringiz botimizni yanada mukammal qilish uchun xizmat qiladi.",
-        reply_markup=main_menu_keyboard()
+        "✅ **Rahmat! Sharhingiz qabul qilindi.**",
+        reply_markup=main_menu()
     )
-
-# ----------------------------------------------------
-# TEST JARAYONI (Random savollar bilan)
-# ----------------------------------------------------
-@dp.callback_query(F.data == "about")
-async def process_about(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.edit_text(
-        "ℹ️ **Bot haqida:**\n\n"
-        "Ushbu bot ingliz tili savollari bazasidan random shaklda savollar beradi va darajangizni aniqlaydi.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Orqaga", callback_data="back_home")]
-        ])
-    )
-
-@dp.callback_query(F.data == "start_test")
-async def start_test(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    
-    user_questions = QUESTIONS_BANK.copy()
-    random.shuffle(user_questions)
-
-    await state.set_state(TestState.in_test)
-    await state.update_data(questions=user_questions, question_index=0, score=0)
-    await send_question(callback.message, state, edit=True)
-
-async def send_question(message: Message, state: FSMContext, edit: bool = False):
-    data = await state.get_data()
-    questions = data.get("questions", [])
-    q_index = data.get("question_index", 0)
-
-    if q_index >= len(questions):
-        score = data.get("score", 0)
-        total = len(questions)
-        await state.clear()
-        
-        percent = (score / total) * 100
-        status = "🌟 Mukammal!" if percent >= 80 else "👍 Yomon emas!" if percent >= 50 else "📚 Yanada ko'proq o'qishingiz kerak!"
-
-        text = (
-            f"🎉 **Test yakunlandi!**\n\n"
-            f"📊 Sizning natijangiz: **{score} / {total}** ({int(percent)}%)\n"
-            f"Baho: {status}"
-        )
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Qaytadan boshlash", callback_data="start_test")],
-            [InlineKeyboardButton(text="✍️ Sharh qoldirish", callback_data="leave_feedback")],
-            [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="back_home")]
-        ])
-        
-        if edit:
-            await message.edit_text(text, reply_markup=keyboard)
-        else:
-            await message.answer(text, reply_markup=keyboard)
-        return
-
-    q = questions[q_index]
-
-    keyboard_buttons = []
-    for i, option in enumerate(q["options"]):
-        keyboard_buttons.append([InlineKeyboardButton(text=option, callback_data=f"ans_{i}")])
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    
-    if edit:
-        await message.edit_text(q["question"], reply_markup=keyboard)
-    else:
-        await message.answer(q["question"], reply_markup=keyboard)
-
-@dp.callback_query(F.data.startswith("ans_"), TestState.in_test)
-async def check_answer(callback: CallbackQuery, state: FSMContext):
-    selected_ans = int(callback.data.split("_")[1])
-
-    data = await state.get_data()
-    questions = data.get("questions")
-    q_index = data.get("question_index")
-    score = data.get("score")
-
-    q = questions[q_index]
-
-    if selected_ans == q["correct"]:
-        score += 1
-        await callback.answer("✅ To'g'ri!", show_alert=False)
-    else:
-        correct_text = q["options"][q["correct"]]
-        await callback.answer(f"❌ Xato! To'g'ri javob: {correct_text}", show_alert=True)
-
-    await state.update_data(question_index=q_index + 1, score=score)
-    await send_question(callback.message, state, edit=True)
-
 
 # --- RENDER WEB SERVER ---
 async def handle(request):
-    return web.Response(text="English Question Bot Active!")
+    return web.Response(text="Super AI English Bot is Active!")
 
 async def web_server():
     app = web.Application()
     app.router.add_get("/", handle)
     runner = web.AppRunner(app)
     await runner.setup()
-
-    # Render talab qiladigan port 10000 ga o'rnatildi
+    
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
