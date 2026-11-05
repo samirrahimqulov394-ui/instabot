@@ -9,18 +9,16 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-TOKEN = os.getenv("BOT_TOKEN")
+# Bot tokeningiz to'g'ridan-to'g'ri kiritildi
+TOKEN = "9019628067:AAEoJWLLx0D7lKPmruIZoItOAvEHeitl9zQ"
 
 logging.basicConfig(level=logging.INFO)
-
-if not TOKEN:
-    raise ValueError("Xatolik: BOT_TOKEN muhit o'zgaruvchisi topilmadi!")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 # ----------------------------------------------------
-# KATTA SAVOLLAR BAZASI (Xohlagancha ko'paytirishingiz mumkin)
+# KATTA SAVOLLAR BAZASI 
 # ----------------------------------------------------
 QUESTIONS_BANK = [
     {
@@ -121,7 +119,7 @@ async def process_feedback_start(callback: CallbackQuery, state: FSMContext):
     
     await callback.message.edit_text(
         "✍️ **Botingiz va savollar haqidagi fikringizni yozib yuboring:**\n\n"
-        "Matn yozib yuborsangiz, u adminga yetkaziladi va botni yaxshilashga yordam beradi.",
+        "Matn yozib yuborsangiz, u loglarga yoziladi va botni yaxshilashga yordam beradi.",
         reply_markup=keyboard
     )
 
@@ -158,7 +156,6 @@ async def process_about(callback: CallbackQuery):
 async def start_test(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     
-    # Savollarni har safar tasodifiy tartibda aralashtiramiz
     user_questions = QUESTIONS_BANK.copy()
     random.shuffle(user_questions)
 
@@ -176,7 +173,6 @@ async def send_question(message: Message, state: FSMContext, edit: bool = False)
         total = len(questions)
         await state.clear()
         
-        # Natijaga qarab baholash
         percent = (score / total) * 100
         status = "🌟 Mukammal!" if percent >= 80 else "👍 Yomon emas!" if percent >= 50 else "📚 Yanada ko'proq o'qishingiz kerak!"
 
@@ -242,9 +238,11 @@ async def web_server():
     runner = web.AppRunner(app)
     await runner.setup()
 
-    port = int(os.environ.get("PORT", 8080))
+    # Render talab qiladigan port 10000 ga o'rnatildi
+    port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
+    logging.info(f"Web server started on port {port}")
 
 async def main():
     await web_server()
