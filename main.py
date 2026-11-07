@@ -12,7 +12,7 @@ import google.generativeai as genai
 
 # --- TOKENLAR VA SOZLAMALAR ---
 BOT_TOKEN = "9019628067:AAEoJWLLx0D7lKPmruIZoItOAvEHeitl9zQ"
-GEMINI_API_KEY = "AQ.Ab8RN6JQAGCed-mdVRbZqF7LeTNvZxG"  # Siz nusxalagan Gemini API kaliti
+GEMINI_API_KEY = "AQ.Ab8RN6JQAGCed-mdVRbZqF7LeTNvZxG"  # Gemini API kalitingiz
 
 # Gemini AI ni sozlash
 genai.configure(api_key=GEMINI_API_KEY)
@@ -56,16 +56,16 @@ async def back_to_home(callback: CallbackQuery, state: FSMContext):
         reply_markup=main_menu()
     )
 
-# --- 1. AI CHAT (Ingliz tilida suhbatlashish va grammatika) ---
+# --- 1. AI CHAT ---
 @dp.callback_query(F.data == "start_ai")
 async def start_ai_chat(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(BotStates.ai_chat)
-    
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Chatni to'xtatish", callback_data="back_home")]
     ])
-    
+
     await callback.message.edit_text(
         "🤖 **AI Repetitor bilan chat boshlandi!**\n\n"
         "Menga ingliz tilida xohlagan narsangizni yozing. Men siz bilan suhbatlashaman va grammatik xatolaringiz bo'lsa, ularni o'zbek tilida tushuntirib beraman.",
@@ -75,13 +75,13 @@ async def start_ai_chat(callback: CallbackQuery, state: FSMContext):
 @dp.message(BotStates.ai_chat)
 async def handle_ai_chat(message: Message):
     user_text = message.text
-    
+
     prompt = (
         f"You are a friendly English teacher. The user said: '{user_text}'. "
         "Reply naturally in English to continue the conversation. "
         "If there are any grammar or vocabulary mistakes in the user's sentence, politely correct them in Uzbek at the end of your message."
     )
-    
+
     try:
         response = gemini_model.generate_content(prompt)
         await message.answer(response.text)
@@ -93,12 +93,12 @@ async def handle_ai_chat(message: Message):
 @dp.callback_query(F.data == "ai_quiz")
 async def generate_ai_quiz(callback: CallbackQuery):
     await callback.answer("Gemini savol tayyorlamoqda...")
-    
+
     prompt = (
         "Generate 1 multiple-choice English grammar question with 4 options. "
         "Provide the correct answer explanation in Uzbek language. Format it nicely."
     )
-    
+
     try:
         response = gemini_model.generate_content(prompt)
         await callback.message.edit_text(
@@ -116,12 +116,12 @@ async def generate_ai_quiz(callback: CallbackQuery):
 @dp.callback_query(F.data == "daily_idiom")
 async def get_daily_idiom(callback: CallbackQuery):
     await callback.answer("Ibora qidirilmoqda...")
-    
+
     prompt = (
         "Provide one interesting and useful English idiom. "
         "Explain its meaning in Uzbek and give an example sentence in English with Uzbek translation."
     )
-    
+
     try:
         response = gemini_model.generate_content(prompt)
         await callback.message.edit_text(
@@ -140,7 +140,7 @@ async def get_daily_idiom(callback: CallbackQuery):
 async def ask_feedback(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(BotStates.waiting_feedback)
-    
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="back_home")]
     ])
@@ -154,9 +154,9 @@ async def receive_feedback(message: Message, state: FSMContext):
     user_info = message.from_user.full_name
     username = f"@{message.from_user.username}" if message.from_user.username else "Usernamelar yo'q"
     feedback = message.text
-    
+
     logging.info(f"Yangi Sharh [{user_info} - {username}]: {feedback}")
-    
+
     await state.clear()
     await message.answer(
         "✅ **Rahmat! Sharhingiz qabul qilindi.**",
@@ -172,7 +172,7 @@ async def web_server():
     app.router.add_get("/", handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    
+
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
@@ -184,3 +184,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+    
+    
